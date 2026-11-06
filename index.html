@@ -1,0 +1,190 @@
+html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Космический Кликер — Играй Бесплатно Онлайн</title>
+    <meta name="description" content="Залипательный кликер в браузере! Кликай, покупай улучшения и ставь рекорды. Прогресс сохраняется автоматически.">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        
+        body { 
+            background: #0b0f19; 
+            color: #fff; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            min-height: 100vh; 
+            padding: 20px; 
+            justify-content: center;
+            position: relative; /* НОВОЕ: нужно для фиксации вылетающих цифр */
+            overflow: hidden;    /* НОВОЕ: прячет полосы прокрутки от цифр */
+        }
+        
+        .game-container { text-align: center; background: #161f32; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 100%; max-width: 400px; z-index: 10; }
+        h1 { font-size: 24px; margin-bottom: 10px; color: #4dadff; }
+        .score-display { font-size: 32px; font-weight: bold; margin: 20px 0; color: #00ffcc; }
+        
+        .click-btn { width: 160px; height: 160px; border-radius: 50%; border: none; background: radial-gradient(circle, #ff007f, #7f00ff); color: white; font-size: 20px; font-weight: bold; cursor: pointer; box-shadow: 0 0 20px rgba(255, 0, 127, 0.6); transition: transform 0.1s, box-shadow 0.1s; outline: none; -webkit-tap-highlight-color: transparent; }
+        .click-btn:active { transform: scale(0.95); box-shadow: 0 0 10px rgba(255, 0, 127, 0.4); }
+        
+        .stats { margin: 15px 0; font-size: 14px; color: #a0aec0; }
+        .shop-box { margin-top: 25px; border-top: 1px solid #2d3748; padding-top: 20px; }
+        .upgrade-btn { width: 100%; padding: 12px; background: #2d3748; border: 1px solid #4a5568; color: white; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 600; transition: 0.2s; margin-bottom: 10px; }
+        .upgrade-btn:hover:not(:disabled) { background: #4a5568; }
+        .upgrade-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .reset-btn { background: none; border: none; color: #e53e3e; cursor: pointer; font-size: 12px; margin-top: 15px; text-decoration: underline; }
+
+        /* НОВОЕ: Стили для эффекта вылетающей цифры */
+        .floating-number {
+            position: absolute;
+            pointer-events: none; /* Цифры не мешают кликать сквозь них */
+            font-size: 26px;
+            font-weight: bold;
+            color: #00ffcc;
+            text-shadow: 0 0 8px rgba(0, 255, 204, 0.8);
+            animation: flyUp 0.8s ease-out forwards;
+            z-index: 9999;
+        }
+
+        /* НОВОЕ: Анимация полета вверх и исчезновения */
+        @keyframes flyUp {
+            0% {
+                transform: translate(-50%, -50%) translateY(0) scale(0.8);
+                opacity: 1;
+            }
+            50% {
+                transform: translate(-50%, -50%) translateY(-40px) scale(1.2);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(-50%, -50%) translateY(-120px) scale(1);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="game-container">
+        <h1>Космический Кликер</h1>
+        <p class="stats">За клик: +<span id="cpc-text">1</span> | В секунду (авто): +<span id="cps-text">0</span></p>
+        
+        <div class="score-display"><span id="score">0</span> 💰</div>
+        
+        <button class="click-btn" id="click-target">КЛИК!</button>
+
+        <div class="shop-box">
+            <button class="upgrade-btn" id="up-click-btn">Сила клика +1 (Цена: <span id="up-click-cost">10</span>)</button>
+            <button class="upgrade-btn" id="up-auto-btn">Авто-майнер +1/сек (Цена: <span id="up-auto-cost">50</span>)</button>
+        </div>
+
+        <button class="reset-btn" id="reset-game">Сбросить прогресс</button>
+    </div>
+
+    <script>
+        // Загрузка сохранений
+        let gameData = JSON.parse(localStorage.getItem("clicker_save")) || {
+            score: 0,
+            cpc: 1,
+            cps: 0,
+            costClick: 10,
+            costAuto: 50
+        };
+
+        const scoreEl = document.getElementById("score");
+        const cpcEl = document.getElementById("cpc-text");
+        const cpsEl = document.getElementById("cps-text");
+        const clickTarget = document.getElementById("click-target");
+        const upClickBtn = document.getElementById("up-click-btn");
+        const upClickCostEl = document.getElementById("up-click-cost");
+        const upAutoBtn = document.getElementById("up-auto-btn");
+        const upAutoCostEl = document.getElementById("up-auto-cost");
+        const resetBtn = document.getElementById("reset-game");
+
+        function updateUI() {
+            scoreEl.textContent = Math.floor(gameData.score);
+            cpcEl.textContent = gameData.cpc;
+            cpsEl.textContent = gameData.cps;
+            upClickCostEl.textContent = gameData.costClick;
+            upAutoCostEl.textContent = gameData.costAuto;
+
+            upClickBtn.disabled = gameData.score < gameData.costClick;
+            upAutoBtn.disabled = gameData.score < gameData.costAuto;
+        }
+
+        function saveGame() {
+            localStorage.setItem("clicker_save", JSON.stringify(gameData));
+        }
+
+        /* ИЗМЕНЕНО: Новая функция клика с анимацией цифр */
+        clickTarget.addEventListener("click", (event) => {
+            gameData.score += gameData.cpc;
+            updateUI();
+
+            // Создаем элемент цифры
+            const num = document.createElement("div");
+            num.classList.add("floating-number");
+            num.textContent = `+${gameData.cpc}`;
+
+            // Рассчитываем координаты (работает на ПК и смартфонах)
+            const pageX = event.pageX || (event.touches && event.touches[0].pageX) || event.clientX;
+            const pageY = event.pageY || (event.touches && event.touches[0].pageY) || event.clientY;
+
+            num.style.left = `${pageX}px`;
+            num.style.top = `${pageY}px`;
+
+            document.body.appendChild(num);
+
+            // Удаляем элемент через 800мс, чтобы не засорять память
+            setTimeout(() => {
+                num.remove();
+            }, 800);
+        });
+
+        // Покупка клика
+        upClickBtn.addEventListener("click", () => {
+            if (gameData.score >= gameData.costClick) {
+                gameData.score -= gameData.costClick;
+                gameData.cpc += 1;
+                gameData.costClick = Math.round(gameData.costClick * 1.5);
+                updateUI();
+                saveGame();
+            }
+        });
+
+        // Покупка авто-майнера
+        upAutoBtn.addEventListener("click", () => {
+            if (gameData.score >= gameData.costAuto) {
+                gameData.score -= gameData.costAuto;
+                gameData.cps += 1;
+                gameData.costAuto = Math.round(gameData.costAuto * 1.6);
+                updateUI();
+                saveGame();
+            }
+        });
+
+        // Работа авто-майнера
+        setInterval(() => {
+            if (gameData.cps > 0) {
+                gameData.score += gameData.cps;
+                updateUI();
+            }
+        }, 1000);
+
+        // Автосохранение
+        setInterval(saveGame, 5000);
+
+        // Сброс
+        resetBtn.addEventListener("click", () => {
+            if (confirm("Вы уверены, что хотите обнулить свой счет?")) {
+                localStorage.removeItem("clicker_save");
+                location.reload();
+            }
+        });
+
+        updateUI();
+    </script>
+</body>
+</html>
